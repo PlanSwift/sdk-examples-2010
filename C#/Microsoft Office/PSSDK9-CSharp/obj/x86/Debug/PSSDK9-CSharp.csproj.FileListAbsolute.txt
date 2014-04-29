@@ -1,0 +1,12 @@
+C:\Users\Brandin Thomas\Documents\Visual Studio 2010\Projects\PSSDK9 C#\PSSDK9-CSharp\PSSDK9-CSharp\obj\x86\Debug\Interop.PlanSwift9.dll
+C:\Users\Brandin Thomas\Documents\Visual Studio 2010\Projects\PSSDK9 C#\PSSDK9-CSharp\PSSDK9-CSharp\obj\x86\Debug\PSSDK9-CSharp.csproj.ResolveComReference.cache
+C:\Users\Brandin Thomas\Documents\Visual Studio 2010\Projects\PSSDK9 C#\PSSDK9-CSharp\PSSDK9-CSharp\obj\x86\Debug\ResolveAssemblyReference.cache
+C:\Users\Brandin Thomas\Documents\Visual Studio 2010\Projects\PSSDK9 C#\PSSDK9-CSharp\PSSDK9-CSharp\obj\x86\Debug\WindowsFormsApplication1.Form1.resources
+C:\Users\Brandin Thomas\Documents\Visual Studio 2010\Projects\PSSDK9 C#\PSSDK9-CSharp\PSSDK9-CSharp\obj\x86\Debug\WindowsFormsApplication1.Properties.Resources.resources
+C:\Users\Brandin Thomas\Documents\Visual Studio 2010\Projects\PSSDK9 C#\PSSDK9-CSharp\PSSDK9-CSharp\obj\x86\Debug\GenerateResource.read.1.tlog
+C:\Users\Brandin Thomas\Documents\Visual Studio 2010\Projects\PSSDK9 C#\PSSDK9-CSharp\PSSDK9-CSharp\obj\x86\Debug\GenerateResource.write.1.tlog
+C:\Users\Brandin Thomas\Documents\Visual Studio 2010\Projects\PSSDK9 C#\PSSDK9-CSharp\PSSDK9-CSharp\bin\Debug\PSSDK9-CSharp.exe
+C:\Users\Brandin Thomas\Documents\Visual Studio 2010\Projects\PSSDK9 C#\PSSDK9-CSharp\PSSDK9-CSharp\bin\Debug\PSSDK9-CSharp.pdb
+C:\Users\Brandin Thomas\Documents\Visual Studio 2010\Projects\PSSDK9 C#\PSSDK9-CSharp\PSSDK9-CSharp\obj\x86\Debug\PSSDK9-CSharp.exe
+C:\Users\Brandin Thomas\Documents\Visual Studio 2010\Projects\PSSDK9 C#\PSSDK9-CSharp\PSSDK9-CSharp\obj\x86\Debug\PSSDK9-CSharp.pdb
+C:\Users\Brandin Thomas\Documents\Visual Studio 2010\Projects\PSSDK9 C#\PSSDK9-CSharp\PSSDK9-CSharp\obj\x86\Debug\WindowsFormsApplication1.Form2.resources

@@ -1,0 +1,361 @@
+{
+Created By: Brandin Thomas
+Version 1.0
+Notes:  You Must First Import The Microsoft 2007 Types From the component Menu
+}
+
+
+unit Unit1;
+
+interface
+
+uses
+  Windows, Messages, SysUtils, Variants, Classes, Graphics, Controls, Forms,
+  Dialogs, ComCtrls, StdCtrls,Planswift9_TLB,Unit2,Word_TLB,Excel_TLB,Outlook_TLB;
+
+type
+  TForm1 = class(TForm)
+    MSWord: TButton;
+    Button2: TButton;
+    Button3: TButton;
+    Button4: TButton;
+    Button5: TButton;
+    Label1: TLabel;
+    Label2: TLabel;
+    Label3: TLabel;
+    Label4: TLabel;
+    Label5: TLabel;
+    ProgressBar1: TProgressBar;
+    procedure MSWordClick(Sender: TObject);
+    procedure FormCreate(Sender: TObject);
+    procedure Button3Click(Sender: TObject);
+    procedure Button2Click(Sender: TObject);
+
+  private
+    { Private declarations }
+    procedure itemToWord(itm:IItem;CRow:Integer;ItmType:String);
+    Procedure GetChildItems(AItem:IItem;lst:TStringList;ItmType:String);
+    procedure itmtoExcel(itm:IItem;rowidx:Integer;wksheet:_WorkSheet);
+  public
+    { Public declarations }
+  end;
+
+var
+  Form1: TForm1;
+  Form2: TForm2;
+  ps: IPlanSwift;
+  doctbl: Word_TLB.Table;
+  Word:Word_TLB._Application;
+  tlst : TStringList;
+
+
+implementation
+
+{$R *.dfm}
+uses
+comobj,Math;
+
+procedure LoadTakeOffItems(itm:IItem);
+var
+isItem:Boolean;
+  idx: Integer;
+  citm: IItem;
+begin
+  for idx := 0 to itm.ChildCount  - 1 do begin
+    //Get Child Items of the takeoff folder
+    citm := itm.ChildItem[idx];
+    // Check if the Item is a Folder
+    if citm.GetProperty('Type').ResultAsString = 'Folder' then begin
+      //if the Item Is a folder load all its take off items (Recursive)
+      LoadTakeOffItems(citm);
+    end else begin
+      //Load only Planswift Items This will Eliminate the need of cycling through things we do not need for this example
+      isItem := citm.GetPropertyResultAsBoolean('IsItem',False);
+      if isItem then
+        tlst.add(citm.GUID);
+      // if this item has child Items Such as Parts or Child Digitizer Items we will want to Include those as well (Recursive)
+      if citm.ChildCount > 0 then
+        LoadTakeOffItems(citm)
+    end;
+
+  end;
+end;
+
+procedure TForm1.FormCreate(Sender: TObject);
+var
+Takeoff,Citem:IItem;
+idx : integer;
+TakeoffPath:String;
+begin
+//create Planswift object
+ps := CoPlanSwift.Create;
+//check to see if a job is open in planswift
+
+//Get all Digitized Items
+tlst := TStringList.Create;
+  TakeoffPath :=  ps.Root.FullPath + '\Job\Takeoff';
+  Takeoff := ps.GetItem(takeoffPath);
+  LoadTakeoffItems(Takeoff);
+  Progressbar1.Min := 0;
+  Progressbar1.Max := tlst.Count;
+end;
+
+Procedure TForm1.GetChildItems(AItem:IItem;lst:TStringList;ItmType:String);
+var
+  i: Integer;
+  CItem: IItem;
+Begin
+  for i := 0 to AItem.ChildCount - 1 do begin
+    CItem := AItem.ChildItem[i];
+    if CItem.GetProperty('Type').ResultAsString = itmType then
+      GetChildItems(CItem,lst,ItmType)
+    else
+      lst.Add(CItem.FullPath);
+  end;
+
+End;
+
+{$REGION 'Microsoft Word 2007 Demo'}
+procedure TForm1.itemToWord(itm:IItem;CRow:Integer;itmType:String);
+Begin
+  Try
+   if CRow >20 then begin
+        doctbl.Rows.Add(emptyparam)
+   end;
+   if itmType = 'Digitizer' then begin
+    doctbl.Cell(CRow,1).Range.Font.Bold := 1;
+    doctbl.Cell(CRow,1).Range.Font.Italic := 0;
+   end else begin
+    doctbl.Cell(CRow,1).Range.Font.Bold := 0;
+    doctbl.Cell(CRow,1).Range.Font.Italic := 1;
+   end;
+   CurrencyString := '$';
+  //Item Name
+  doctbl.Cell(CRow,1).range.text := itm.Name;
+  //Item Qty
+  doctbl.Cell(CRow,2).range.text := floatToStrf(itm.GetProperty('Qty').ResultAsFloat,ffFixed, 4, 2);
+  //Item Units
+  doctbl.Cell(CRow,3).range.text := itm.GetProperty('Qty').Units;
+  //Item Price Each
+  doctbl.Cell(CRow,4).range.text := floatToStrF(itm.GetProperty('Price Each').ResultAsFloat,ffCurrency, 4, 2);
+  //Item Price Total
+  doctbl.Cell(CRow,5).range.text := floatToStrF(itm.GetProperty('Price Total').ResultAsFloat,ffCurrency, 4, 2);
+  Except
+   //Nothing
+  End;
+
+End;
+//Export to Microsoft Word 2007
+procedure TForm1.MSWordClick(Sender: TObject);
+var
+  ImportType: String;
+  template, newtemplate, doctype, isvisible: olevariant;
+  doc: _Document;
+  idx: Integer;
+  CRow: Integer;
+  TakeoffList: TStringList;
+  Takeoff: IItem;
+  CItem: IItem;
+  itm: IItem;
+  TakeoffPath: String;
+  itmidx: Integer;
+  citm: IItem;
+  rowidx: Integer;
+  itmtype: String;
+  aitm: IItem;
+  isDigitizer: Boolean;
+begin
+Form2 := TForm2.Create(Form1);
+Form2.ShowModal;
+
+if Form2.ModalResult <> mrok then
+  Exit;
+
+ImportType := Form2.ComboBox1.Text;
+TakeoffList := TStringList.Create;
+try
+  //Open Microsoft Word
+  Word := CoWordApplication.Create;
+ //Open Sample Quote
+  template := GetCurrentDir + '\Includes\SampleQuote.dotx';
+  newtemplate := false;
+  doctype := wdNewBlankDocument;
+  isvisible := true;
+  doc := Word.Documents.Add(template,newTemplate,doctype,isvisible);
+  //Get Table
+  doctbl := doc.Tables.Item(2);
+
+  if ImportType = 'Digitized Items Only' then begin
+    for idx := 0 to tlst.count - 1 do begin
+      isDigitizer := False;
+      aitm := ps.GetItem(tlst.strings[idx]);
+      if aitm.GetPropertyResultAsBoolean('IsArea',False) then
+        isDigitizer := True;
+      if aitm.GetPropertyResultAsBoolean('IsSegment',False) then
+        isDigitizer := True;
+      if aitm.GetPropertyResultAsBoolean('IsLinear',False) then
+        isDigitizer := True;
+      if aitm.GetPropertyResultAsBoolean('IsCount',False) then
+        isDigitizer := True;
+
+      if isDigitizer then begin
+          inc(rowidx);
+          itemtoword(aitm,rowidx,'Digitizer');
+      end;
+      ProgressBar1.Position := rowidx;
+    end;
+  End;
+
+  if ImportType = 'Parts Only' then begin
+
+  end;
+
+  if ImportType = 'Digitized Items W/Parts' then begin
+
+  end;
+finally
+  Word.Visible := True;
+  word := nil;
+  Form2.Free;
+end;
+end;
+{$ENDREGION}
+
+{$REGION 'Microsoft Excel 2007 Demo'}
+
+procedure TForm1.itmtoExcel(itm:IItem;rowidx:Integer;wksheet:_WorkSheet);
+begin
+ if Rowidx > 36 then begin
+      wksheet.Cells.Item[rowidx,1].entirerow.insert(xlshiftdown,emptyparam);
+
+ end;
+  //QtyCell
+  wksheet.Cells.Item[rowidx,1].value := itm.GetProperty('Qty').ResultAsString;
+  //QtyUnits
+  wksheet.Cells.Item[rowidx,2].value := itm.GetProperty('Qty').Units;
+  //Item Number
+  wksheet.Cells.Item[rowidx,3].value := itm.GetProperty('Item #').ResultAsString;
+  //Item Name
+  wksheet.Cells.Item[rowidx,4].value := itm.Name;
+  //Item Price Each
+  wksheet.Cells.Item[rowidx,5].value := itm.GetProperty('Price Each').ResultAsString;
+  //Item Price Total
+  wksheet.Cells.Item[rowidx,6].value := itm.GetProperty('Price Total').ResultAsString;
+end;
+
+
+
+procedure TForm1.Button3Click(Sender: TObject);
+Var
+Excel:Excel_TLB._Application;
+template,firstSheet:olevariant;
+  Wkbook: _Workbook;
+  isVisible : Wordbool;
+  WkSheet: _Worksheet;
+  ImportType: String;
+  StartRow: Integer;
+  Ndx: Integer;
+  Rowidx: Integer;
+  Itm: IItem;
+  citm: IItem;
+  itmidx: Integer;
+  itmtype: WideString;
+
+begin
+  Form2 := TForm2.create(Form1);
+  if Form2.showmodal <> mrok then Exit;
+  ImportType := Form2.ComboBox1.Text;
+  firstSheet := 0;
+  isVisible := True;
+  excel := coExcelApplication.Create;
+  template := getCurrentdir + '\Includes\Estimate.XLT';
+  Wkbook := excel.Workbooks.Add(template,1);
+  excel.Visible[1] := isVisible;
+  WkSheet := wkbook.Sheets[1] as _Worksheet;
+
+  if ImportType = 'Digitized Items Only' then begin
+    Rowidx := 17;
+    for Ndx := 0 to TakeoffList.Count - 1 do begin
+     inc(Rowidx);
+
+
+     Itm := ps.GetItem(TakeoffList.Strings[ndx]);
+     itmtoExcel(itm,RowIdx,wksheet);
+    end;
+  End;
+
+  if ImportType = 'Parts Only' then begin
+  try
+    rowidx := 17;
+    for Ndx := 0 to TakeoffList.Count - 1 do begin
+      itm := ps.GetItem(TakeoffList.Strings[ndx]);
+        for itmidx := 0 to itm.ChildCount - 1 do begin
+          citm := itm.ChildItem[itmidx];
+          itmtype := citm.getProperty('Type').ResultAsString;
+          if ((itmtype = 'Part') or (itmtype = 'Material') or (itmtype = 'Equipment') or (itmtype = 'Labor') or (itmtype = 'Other') or (itmtype = 'SubContract')) then begin
+            inc(rowidx);
+            ItmtoExcel(citm,rowidx,wksheet);
+          end;
+        end;
+    end;
+  except
+   //Nothing
+  end;
+end;
+
+if ImportType = 'Digitized Items W/Parts' then begin
+  rowidx := 17;
+   for ndx := 0 to TakeoffList.Count - 1 do begin
+      inc(rowidx);
+      itm := ps.GetItem(TakeOffList.Strings[ndx]);
+      ItmtoExcel(itm,rowidx,Wksheet);
+        for itmidx := 0 to itm.ChildCount - 1 do begin
+          citm := itm.ChildItem[itmidx];
+          itmtype := citm.getProperty('Type').ResultAsString;
+          if ((itmtype = 'Part') or (itmtype = 'Material') or (itmtype = 'Equipment') or (itmtype = 'Labor') or (itmtype = 'Other') or (itmtype = 'SubContract')) then begin
+            inc(rowidx);
+            ItmtoExcel(citm,rowidx,wksheet);
+          end;
+        end;
+    end;
+End;
+ excel := nil;
+ Form2.Free;
+end;
+
+{$ENDREGION}
+
+
+{$REGION 'Microsoft Outlook 2007 Demo'}
+procedure TForm1.Button2Click(Sender: TObject);
+var
+  ImportType: String;
+  outlook: outlook_tlb._Application;
+  mail: _MailItem;
+  display : olevariant;
+begin
+  Form2 := TForm2.Create(Form1);
+  display := True;
+  if Form2.showmodal <> mrok then Exit;
+  ImportType := Form2.ComboBox1.Text;
+  outlook := coOutlookApplication.Create;
+
+  mail := outlook.CreateItemFromTemplate(getCurrentDir + '\Includes\Outlook Example.oft',emptyparam) as MailItem;
+  mail.Display(display);
+
+end;
+
+{$ENDREGION}
+
+{$REGION 'Open Office Demo'}
+
+
+{$ENDREGION}
+
+{$REGION 'AutoCad 2010 Demo'}
+
+
+{$ENDREGION}
+
+
+end.

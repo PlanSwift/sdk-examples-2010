@@ -1,0 +1,463 @@
+{
+Created By: Brandin Thomas
+Version 1.0
+Notes:  You Must First Import The Microsoft 2007 Types From the component Menu
+}
+
+
+unit Unit1;
+
+interface
+
+uses
+  Windows, Messages, SysUtils, Variants, Classes, Graphics, Controls, Forms,
+  Dialogs, ComCtrls, StdCtrls,Planswift9_TLB,Unit2,Word_TLB,Excel_TLB,Outlook_TLB;
+
+type
+  TForm1 = class(TForm)
+    MSWord: TButton;
+    Button2: TButton;
+    Button3: TButton;
+    Label1: TLabel;
+    Label2: TLabel;
+    Label3: TLabel;
+    ProgressBar1: TProgressBar;
+    procedure MSWordClick(Sender: TObject);
+    procedure FormCreate(Sender: TObject);
+    procedure Button3Click(Sender: TObject);
+    procedure Button2Click(Sender: TObject);
+
+  private
+    { Private declarations }
+    procedure itemToWord(itm:IItem;CRow:Integer;ItmType:String);
+    Procedure GetChildItems(AItem:IItem;lst:TStringList;ItmType:String);
+    procedure itmtoExcel(itm:IItem;rowidx:Integer;wksheet:_WorkSheet);
+  public
+    { Public declarations }
+  end;
+
+var
+  Form1: TForm1;
+  Form2: TForm2;
+  ps: IPlanSwift;
+  doctbl: Word_TLB.Table;
+  Word:Word_TLB._Application;
+  tlst : TStringList;
+
+
+implementation
+
+{$R *.dfm}
+uses
+comobj,Math;
+
+procedure LoadTakeOffItems(itm:IItem);
+var
+isItem:Boolean;
+  idx: Integer;
+  citm: IItem;
+begin
+  for idx := 0 to itm.ChildCount  - 1 do begin
+    //Get Child Items of the takeoff folder
+    citm := itm.ChildItem[idx];
+    // Check if the Item is a Folder
+    if citm.GetProperty('Type').ResultAsString = 'Folder' then begin
+      //if the Item Is a folder load all its take off items (Recursive)
+      LoadTakeOffItems(citm);
+    end else begin
+      //Load only Planswift Items This will Eliminate the need of cycling through things we do not need for this example
+      isItem := citm.GetPropertyResultAsBoolean('IsItem',False);
+      if isItem then
+        tlst.add(citm.GUID);
+      // if this item has child Items Such as Parts or Child Digitizer Items we will want to Include those as well (Recursive)
+      if citm.ChildCount > 0 then
+        LoadTakeOffItems(citm)
+    end;
+
+  end;
+end;
+
+procedure TForm1.FormCreate(Sender: TObject);
+var
+Takeoff,Citem:IItem;
+idx : integer;
+TakeoffPath:String;
+begin
+//create Planswift object
+ps := CoPlanSwift.Create;
+//check to see if a job is open in planswift
+
+//Get all Digitized Items
+tlst := TStringList.Create;
+  TakeoffPath :=  ps.Root.FullPath + '\Job\Takeoff';
+  Takeoff := ps.GetItem(takeoffPath);
+  LoadTakeoffItems(Takeoff);
+  Progressbar1.Min := 0;
+  Progressbar1.Max := tlst.Count;
+end;
+
+Procedure TForm1.GetChildItems(AItem:IItem;lst:TStringList;ItmType:String);
+var
+  i: Integer;
+  CItem: IItem;
+Begin
+  for i := 0 to AItem.ChildCount - 1 do begin
+    CItem := AItem.ChildItem[i];
+    if CItem.GetProperty('Type').ResultAsString = itmType then
+      GetChildItems(CItem,lst,ItmType)
+    else
+      lst.Add(CItem.FullPath);
+  end;
+
+End;
+
+{$REGION 'Microsoft Word 2007 Demo'}
+procedure TForm1.itemToWord(itm:IItem;CRow:Integer;itmType:String);
+Begin
+  Try
+   if CRow >20 then begin
+        doctbl.Rows.Add(emptyparam)
+   end;
+   if itmType = 'Digitizer' then begin
+    doctbl.Cell(CRow,1).Range.Font.Bold := 1;
+    doctbl.Cell(CRow,1).Range.Font.Italic := 0;
+   end else begin
+    doctbl.Cell(CRow,1).Range.Font.Bold := 0;
+    doctbl.Cell(CRow,1).Range.Font.Italic := 1;
+   end;
+   CurrencyString := '$';
+  //Item Name
+  doctbl.Cell(CRow,1).range.text := itm.Name;
+  //Item Qty
+  doctbl.Cell(CRow,2).range.text := floatToStrf(itm.GetProperty('Qty').ResultAsFloat,ffFixed, 4, 2);
+  //Item Units
+  doctbl.Cell(CRow,3).range.text := itm.GetProperty('Qty').Units;
+  //Item Price Each
+  doctbl.Cell(CRow,4).range.text := floatToStrF(itm.GetProperty('Price Each').ResultAsFloat,ffCurrency, 4, 2);
+  //Item Price Total
+  doctbl.Cell(CRow,5).range.text := floatToStrF(itm.GetProperty('Price Total').ResultAsFloat,ffCurrency, 4, 2);
+  Except
+   //Nothing
+  End;
+
+End;
+//Export to Microsoft Word 2007
+procedure TForm1.MSWordClick(Sender: TObject);
+var
+  ImportType: String;
+  template, newtemplate, doctype, isvisible: olevariant;
+  doc: _Document;
+  idx: Integer;
+  CRow: Integer;
+  TakeoffList: TStringList;
+  Takeoff: IItem;
+  CItem: IItem;
+  itm: IItem;
+  TakeoffPath: String;
+  itmidx: Integer;
+  citm: IItem;
+  rowidx: Integer;
+  itmtype: String;
+  aitm: IItem;
+  isDigitizer: Boolean;
+begin
+Form2 := TForm2.Create(Form1);
+Form2.ShowModal;
+
+if Form2.ModalResult <> mrok then
+  Exit;
+
+ImportType := Form2.ComboBox1.Text;
+TakeoffList := TStringList.Create;
+try
+  //Open Microsoft Word
+  Word := CoWordApplication.Create;
+ //Open Sample Quote
+  template := GetCurrentDir + '\Includes\SampleQuote.dotx';
+  newtemplate := false;
+  doctype := wdNewBlankDocument;
+  isvisible := true;
+  doc := Word.Documents.Add(template,newTemplate,doctype,isvisible);
+  //Get Table
+  doctbl := doc.Tables.Item(2);
+
+  if ImportType = 'Digitized Items Only' then begin
+    for idx := 0 to tlst.count - 1 do begin
+      isDigitizer := False;
+      aitm := ps.GetItem(tlst.strings[idx]);
+      if aitm.GetPropertyResultAsBoolean('IsArea',False) then
+        isDigitizer := True;
+      if aitm.GetPropertyResultAsBoolean('IsSegment',False) then
+        isDigitizer := True;
+      if aitm.GetPropertyResultAsBoolean('IsLinear',False) then
+        isDigitizer := True;
+      if aitm.GetPropertyResultAsBoolean('IsCount',False) then
+        isDigitizer := True;
+
+      if isDigitizer then begin
+          inc(rowidx);
+          itemtoword(aitm,rowidx,'Digitizer');
+      end;
+      ProgressBar1.Position := idx;
+    end;
+  End;
+
+  if ImportType = 'Parts Only' then begin
+    for idx := 0 to tlst.count - 1 do begin
+      aitm := ps.GetItem(tlst.Strings[idx]);
+      if aitm.GetPropertyResultAsBoolean('IsPart',False) then begin
+        inc(rowidx);
+        itemtoword(aitm,rowidx,'Part');
+      end;
+      ProgressBar1.Position := idx;
+    end;
+  end;
+
+  if ImportType = 'Digitized Items W/Parts' then begin
+    for idx  := 0 to tlst.count - 1 do begin
+    aitm := ps.GetItem(tlst.Strings[idx]);
+    inc(rowidx);
+    if aitm.GetPropertyResultAsBoolean('IsPart',False) then
+      itemtoWord(aitm,rowidx,'Part')
+    else
+      itemToWord(aitm,rowidx,'Digitizer');
+
+      ProgressBar1.Position := idx;
+    end;
+
+  end;
+finally
+  Progressbar1.Position := 0;
+  Word.Visible := True;
+  word := nil;
+  Form2.Free;
+end;
+end;
+{$ENDREGION}
+
+{$REGION 'Microsoft Excel 2007 Demo'}
+
+procedure TForm1.itmtoExcel(itm:IItem;rowidx:Integer;wksheet:_WorkSheet);
+begin
+ if Rowidx > 36 then begin
+      wksheet.Cells.Item[rowidx,1].entirerow.insert(xlshiftdown,emptyparam);
+
+ end;
+  //QtyCell
+  wksheet.Cells.Item[rowidx,1].value := itm.GetProperty('Qty').ResultAsString;
+  //QtyUnits
+  wksheet.Cells.Item[rowidx,2].value := itm.GetProperty('Qty').Units;
+  //Item Number
+  wksheet.Cells.Item[rowidx,3].value := itm.GetProperty('Item #').ResultAsString;
+  //Item Name
+  wksheet.Cells.Item[rowidx,4].value := itm.Name;
+  //Item Price Each
+  wksheet.Cells.Item[rowidx,5].value := itm.GetProperty('Price Each').ResultAsString;
+  //Item Price Total
+  wksheet.Cells.Item[rowidx,6].value := itm.GetProperty('Price Total').ResultAsString;
+end;
+
+
+
+procedure TForm1.Button3Click(Sender: TObject);
+Var
+Excel:Excel_TLB._Application;
+template,firstSheet:olevariant;
+  Wkbook: _Workbook;
+  isVisible : Wordbool;
+  WkSheet: _Worksheet;
+  ImportType: String;
+  StartRow: Integer;
+  Ndx: Integer;
+  Rowidx: Integer;
+  Itm: IItem;
+  citm: IItem;
+  itmidx: Integer;
+  itmtype: WideString;
+  isDigitizer: Boolean;
+  aitm: IItem;
+  idx: Integer;
+
+begin
+  Form2 := TForm2.create(Form1);
+  if Form2.showmodal <> mrok then Exit;
+  ImportType := Form2.ComboBox1.Text;
+  firstSheet := 0;
+  isVisible := True;
+  excel := coExcelApplication.Create;
+  template := getCurrentdir + '\Includes\Estimate.XLT';
+  Wkbook := excel.Workbooks.Add(template,1);
+  excel.Visible[1] := isVisible;
+  WkSheet := wkbook.Sheets[1] as _Worksheet;
+
+  if ImportType = 'Digitized Items Only' then begin
+    Rowidx := 17;
+    for idx := 0 to tlst.Count - 1 do begin
+     isDigitizer := False;
+      aitm := ps.GetItem(tlst.strings[idx]);
+      if aitm.GetPropertyResultAsBoolean('IsArea',False) then
+        isDigitizer := True;
+      if aitm.GetPropertyResultAsBoolean('IsSegment',False) then
+        isDigitizer := True;
+      if aitm.GetPropertyResultAsBoolean('IsLinear',False) then
+        isDigitizer := True;
+      if aitm.GetPropertyResultAsBoolean('IsCount',False) then
+        isDigitizer := True;
+
+      if isDigitizer then begin
+          inc(rowidx);
+          itmtoExcel(aitm,rowidx,wksheet);
+      end;
+      ProgressBar1.Position := idx;
+    end;
+    End;
+
+  if ImportType = 'Parts Only' then begin
+    rowidx := 17;
+    for Ndx := 0 to tlst.Count - 1 do begin
+       aitm := ps.GetItem(tlst.Strings[idx]);
+      if aitm.GetPropertyResultAsBoolean('IsPart',False) then begin
+        inc(rowidx);
+        itmtoExcel(aitm,rowidx,wksheet);
+      end;
+      ProgressBar1.Position := idx;
+    end;
+end;
+
+if ImportType = 'Digitized Items W/Parts' then begin
+  rowidx := 17;
+   for idx  := 0 to tlst.count - 1 do begin
+    aitm := ps.GetItem(tlst.Strings[idx]);
+    inc(rowidx);
+    if aitm.GetPropertyResultAsBoolean('IsPart',False) then
+      itmtoExcel(aitm,rowidx,wksheet)
+    else
+      itmToExcel(aitm,rowidx,wksheet);
+
+      ProgressBar1.Position := idx;
+    end;
+End;
+ excel := nil;
+ Form2.Free;
+end;
+
+{$ENDREGION}
+
+
+{$REGION 'Microsoft Outlook 2007 Demo'}
+Function createMailBody(RT:String):String;
+var
+  body: string;
+  idx: Integer;
+  itm: IItem;
+begin
+  body := '<body>' + #13#10;
+  body := body + '<h1>Report Type: ' + RT + '</h1>' + #13#10;
+  body := body + '<table style="width:auto; font-weight:Bold; font-family:Tahoma; font-size:14px;">' + #13#10;
+  body := body + '<tr>' + #13#10;
+  body := body + '<td style="width:200px; font-weight:Bold; font-family:Tahoma; font-size:14px;">';
+  body := body + 'Name';
+  body := body + '</td>' + #13#10;
+  body := body + '<td style="width:100px; font-weight:Bold; font-family:Tahoma; font-size:14px;">';
+  body := body + 'Qty';
+  body := body + '</td>' + #13#10;
+  body := body + '<td style="width:100px; font-weight:Bold; font-family:Tahoma; font-size:14px;">';
+  body := body + 'Price Each';
+  body := body + '</td>' + #13#10;
+  body := body + '<td style="width:100px; font-weight:Bold; font-family:Tahoma;font-size:14px;">';
+  body := body + 'Price Total';
+  body := body + '</td>' + #13#10;
+  body := body + '</tr>' + #13#10;
+  if RT = 'Digitized Items Only' then begin
+    for idx := 0 to tlst.Count -1 do begin
+      itm := ps.GetItem(tlst.Strings[idx]);
+      if itm.GetPropertyResultAsBoolean('isPart',False) = False then begin
+        body := body + '<tr><td style="font-size:12px; font-weight:normal;">' + itm.Name + '</td>';
+        body := body + '<td style="font-size:12px; font-weight:normal;">' + itm.GetPropertyResultAsString('Qty','') + '</td>';
+        body := body + '<td style="font-size:12px; font-weight:normal;">' + itm.GetPropertyResultAsString('Price Each','') + '</td>';
+        body := body + '<td style="font-size:12px; font-weight:normal;">' + itm.GetPropertyResultAsString('Price Total','') + '</td>';
+        body := body + '</tr>';
+      End;
+
+    end;
+
+  End;
+  if RT = 'Parts Only' then begin
+    for idx := 0 to tlst.Count -1 do begin
+      itm := ps.GetItem(tlst.Strings[idx]);
+      if itm.GetPropertyResultAsBoolean('isPart',False) = True then begin
+        body := body + '<tr><td style="font-size:12px; font-weight:normal;">' + itm.Name + '</td>';
+        body := body + '<td style="font-size:12px; font-weight:normal;">' + itm.GetPropertyResultAsString('Qty','') + '</td>';
+        body := body + '<td style="font-size:12px; font-weight:normal;">' + itm.GetPropertyResultAsString('Price Each','') + '</td>';
+        body := body + '<td style="font-size:12px; font-weight:normal;">' + itm.GetPropertyResultAsString('Price Total','') + '</td>';
+        body := body + '</tr>';
+      End;
+
+    end;
+
+  End;
+  if RT = 'Digitized Items W/Parts' then begin
+    for idx := 0 to tlst.Count -1 do begin
+      itm := ps.GetItem(tlst.Strings[idx]);
+      if itm.GetPropertyResultAsBoolean('isPart',False) = False then begin
+        body := body + '<tr><td style="font-size:12px; font-weight:normal; color:#007dc3;">' + itm.Name + '</td>';
+        body := body + '<td style="font-size:12px; font-weight:normal; color:#007dc3;">' + itm.GetPropertyResultAsString('Qty','') + '</td>';
+        body := body + '<td style="font-size:12px; font-weight:normal; color:#007dc3;">' + itm.GetPropertyResultAsString('Price Each','') + '</td>';
+        body := body + '<td style="font-size:12px; font-weight:normal; color:#007dc3;">' + itm.GetPropertyResultAsString('Price Total','') + '</td>';
+        body := body + '</tr>';
+      End;
+      if itm.GetPropertyResultAsBoolean('isPart',False) = True then begin
+        body := body + '<tr><td style="font-size:12px; font-weight:normal; color:#0000FF;">' + itm.Name + '</td>';
+        body := body + '<td style="font-size:12px; font-weight:normal; color:#0000FF;">' + itm.GetPropertyResultAsString('Qty','') + '</td>';
+        body := body + '<td style="font-size:12px; font-weight:normal; color:#0000FF;">' + itm.GetPropertyResultAsString('Price Each','') + '</td>';
+        body := body + '<td style="font-size:12px; font-weight:normal; color:#0000FF;">' + itm.GetPropertyResultAsString('Price Total','') + '</td>';
+        body := body + '</tr>';
+      End;
+
+    end;
+
+  End;
+
+
+  body := body + '</table>' + #13#10;
+  body := body + '</body>';
+  Result := body;
+end;
+procedure TForm1.Button2Click(Sender: TObject);
+var
+  ReportType: String;
+  outlook: outlook_tlb._Application;
+  mail: _MailItem;
+  display : olevariant;
+  JobName: WideString;
+begin
+  Form2 := TForm2.Create(Form1);
+  display := True;
+  if Form2.showmodal <> mrok then Exit;
+  ReportType := Form2.ComboBox1.Text;
+  outlook := coOutlookApplication.Create;
+
+  mail := outlook.CreateItem(outlook_tlb.olMailItem) as MailItem;
+
+  JobName := ps.GetItem(ps.Root.FullPath + '\Job').Name;
+  mail.Subject := JobName;
+  mail.htmlBody := CreateMailBody(ReportType);
+    mail.Display(display);
+  outlook := nil;
+
+end;
+
+{$ENDREGION}
+
+{$REGION 'Open Office Demo'}
+
+
+{$ENDREGION}
+
+{$REGION 'AutoCad 2010 Demo'}
+
+
+{$ENDREGION}
+
+
+end.

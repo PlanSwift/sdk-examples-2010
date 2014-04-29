@@ -1,0 +1,94 @@
+unit Unit1;
+
+interface
+
+uses
+  Windows, Messages, SysUtils, Variants, Classes, Graphics, Controls, Forms,
+  Dialogs, StdCtrls, planswift9_tlb;
+
+type
+  TForm1 = class(TForm)
+    PageCBX: TComboBox;
+    Button1: TButton;
+    Button2: TButton;
+    Label1: TLabel;
+    procedure FormCreate(Sender: TObject);
+  private
+    { Private declarations }
+  public
+    { Public declarations }
+  end;
+
+var
+  Form1: TForm1;
+  ps:IPlanswift;
+   pglst: TStringList;
+  slst: TStringList;
+implementation
+
+{$R *.dfm}
+
+Procedure populateitemList(itm:IItem; lst:TStringlist; itmType:String);
+var
+  idx: Integer;
+  citm: IItem;
+  isItm: Boolean;
+begin
+  for idx := 0 to itm.ChildCount  - 1 do begin
+    citm := itm[idx];
+    if citm.GetProperty('Type').ResultAsString = 'Folder' then begin
+      //(recursive) if item is a folder load all its childPages
+      PopulateItemList(citm,lst,itmType);
+    end else begin
+       isItm := citm.GetPropertyResultAsBoolean(itmType,false);
+       if isItm then
+        lst.Add(citm.GUID);
+
+       //(recursive)if this item has child items we will want to include those as well
+       if citm.ChildCount > 0 then
+        populateItemList(citm, lst, itmType);
+    end;
+
+  end;
+end;
+
+procedure GetpageSections(pg:String; lst:TStringList);
+var
+  idx: Integer;
+  itm: IItem;
+begin
+  for idx := 0 to lst.Count - 1 do begin
+    itm = ps.GetItem(slst.Strings[idx]);
+    if itm.GetPropertyResultAsString('PageGUID','') = pg then
+      lst.Add(itm.GUID);
+  end;
+end;
+
+procedure TForm1.FormCreate(Sender: TObject);
+var
+  pgPath: WideString;
+  tkPath: WideString;
+  pgsItem: IItem;
+  sItem: IItem;
+  idx: Integer;
+begin
+  //Load Planswift if not already open
+  ps := coPlanswift.Create;
+  pgPath := ps.Root.FullPath + '\Job\Pages';
+  tkPath := ps.Root.FullPath + '\Job\Takeoff';
+  //get Items
+  pgsItem := ps.GetItem(pgPath);
+  sItem := ps.GetItem(tkpath);
+  //Create Page and takeoff list
+  pglst := TstringList.Create;
+  slst := TStringList.Create;
+  // load Pages into List
+  PopulateItemList(pgsitem,pgLst,'IsPage');
+  // load Sections into list
+  PopulateItemList(pgsitem,slst,'IsSection');
+  // Load Pages into combobox
+  for idx := 0 to pglst.count - 1 do
+    pagecbx.Items.Add(ps.GetItem(pglst.Strings[idx]).Name);
+end;
+
+end.

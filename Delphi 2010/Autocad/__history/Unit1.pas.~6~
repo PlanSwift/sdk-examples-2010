@@ -1,0 +1,164 @@
+unit Unit1;
+
+interface
+
+uses
+  Windows, Messages, SysUtils, Variants, Classes, Graphics, Controls, Forms,
+  Dialogs, StdCtrls, planswift9_tlb,AutoCAD_TLB;
+
+type
+  TForm1 = class(TForm)
+    PageCBX: TComboBox;
+    Button1: TButton;
+    Button2: TButton;
+    Label1: TLabel;
+    procedure FormCreate(Sender: TObject);
+    procedure Button1Click(Sender: TObject);
+  private
+    { Private declarations }
+  public
+    { Public declarations }
+  end;
+
+var
+  Form1: TForm1;
+  ps:IPlanswift;
+   pglst: TStringList;
+  slst: TStringList;
+  ACad: IACadApplication;
+  AMS: IAcadModelSpace;
+implementation
+
+{$R *.dfm}
+uses
+comobj;
+
+Procedure populateitemList(itm:IItem; lst:TStringlist; itmType:String);
+var
+  idx: Integer;
+  citm: IItem;
+  isItm: Boolean;
+begin
+  for idx := 0 to itm.ChildCount  - 1 do begin
+    citm := itm[idx];
+    if citm.GetProperty('Type').ResultAsString = 'Folder' then begin
+      //(recursive) if item is a folder load all its childPages
+      PopulateItemList(citm,lst,itmType);
+    end else begin
+       isItm := citm.GetPropertyResultAsBoolean(itmType,false);
+       if isItm then
+        lst.Add(citm.GUID);
+
+       //(recursive)if this item has child items we will want to include those as well
+       if citm.ChildCount > 0 then
+        populateItemList(citm, lst, itmType);
+    end;
+
+  end;
+end;
+
+procedure GetpageSections(pg:String; lst:TStringList);
+var
+  idx: Integer;
+  itm: IItem;
+begin
+  for idx := 0 to slst.Count - 1 do begin
+    itm := ps.GetItem(slst.Strings[idx]);
+    if itm.GetPropertyResultAsString('PageGUID','') = pg then
+      lst.Add(itm.GUID);
+  end;
+end;
+procedure itemToAcad(itm:IItem);
+var
+  idx: Integer;
+  pt: IPoint;
+  SX: Extended;
+  SY: Extended;
+  aptx: Extended;
+  apty: Extended;
+  isclosed: Boolean;
+  startpoint: IPoint;
+  endpoint: IPoint;
+  thisnode: IPoint;
+  thisline: IAcadLWPolyline;
+begin
+  SX := ps.GetItem(itm.GetProperty('PageGUID').ResultAsString).GetProperty('ScaleX').ResultAsFloat;
+  SY := ps.GetItem(itm.GetProperty('PageGUID').ResultAsString).GetProperty('ScaleY').ResultAsFloat;
+  startpoint := itm.GetPoint(0);
+  endpoint := itm.GetPoint(itm.PointCount -1 );
+
+  if (startpoint.x = endpoint.x) and (startpoint.y = endpoint.y) then
+    isclosed := true;
+    if isclosed then
+    pt := vararraycreate([0, ((itm.PointCount) * 2) - 1], varDouble)
+    else
+    pt := vararraycreate([0, ((itm.PointCount+1) * 2) - 1], varDouble);
+    for idx := 0 to itm.PointCount - 1 do
+    begin
+      thisnode := itm.GetPoint(idx);
+      pt[idx*2] := (thisnode.x / sx) * 12;
+      pt[idx*2 + 1] := 0 - ((thisnode.y / sy) * 12);
+    end;
+    if not isclosed then
+    begin
+    pt[vararrayhighbound(pt,1) - 1] := (startpoint.x / sx) * 12;
+    pt[vararrayhighbound(pt,1)] := 0 - ((startpoint.y / sy) * 12);
+    end;
+    thisline := AMS.AddLightWeightPolyline(pt);
+    thisline.color := autocad_tlb.acGreen;
+end;
+procedure TForm1.Button1Click(Sender: TObject);
+var
+  pg: string;
+  pgSlst: TStringList;
+  idx: Integer;
+begin
+pgSlst := TStringList.Create;
+pg := pglst.Strings[pagecbx.itemIndex];
+
+//Populate Page Sections
+GetpageSections(pg,pgSLst);
+if pgSlst.Count = 0 then begin
+  ShowMessage('Could Not Find Any Sections on Page: Please Select a Different Page');
+  PageCBX.SetFocus;
+  Exit;
+end;
+
+  //Load Autoocad if Not already open
+  Acad := CoAcadApplication.Create;
+  AMS := Acad.ActiveDocument.ModelSpace;
+  for idx  := 0 to pgslst.count - 1 do
+    itemToAcad(ps.GetItem(pgslst.Strings[idx]))
+
+end;
+
+procedure TForm1.FormCreate(Sender: TObject);
+var
+  pgPath: WideString;
+  tkPath: WideString;
+  pgsItem: IItem;
+  sItem: IItem;
+  idx: Integer;
+
+
+begin
+  //Load Planswift if not already open
+  ps := coPlanswift.Create;
+  pgPath := ps.Root.FullPath + '\Job\Pages';
+  tkPath := ps.Root.FullPath + '\Job\TakeOff';
+  //get Items
+  pgsItem := ps.GetItem(pgPath);
+  sItem := ps.GetItem(tkpath);
+  //Create Page and takeoff list
+  pglst := TstringList.Create;
+  slst := TStringList.Create;
+  // load Pages into List
+  PopulateItemList(pgsitem,pgLst,'IsPage');
+  // load Sections into list
+  PopulateItemList(SItem,slst,'IsSection');
+  // Load Pages into combobox
+  for idx := 0 to pglst.count - 1 do
+    pagecbx.Items.Add(ps.GetItem(pglst.Strings[idx]).Name);
+end;
+
+end.
